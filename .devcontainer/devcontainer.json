@@ -1,0 +1,48 @@
+{
+    "name": "FullStack JS - Prescription App",
+    "dockerComposeFile": [
+        "../docker-compose.yml"
+    ],
+    "service": "app",
+    "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "esbenp.prettier-vscode",
+                "dbaeumer.vscode-eslint",
+                "firsttris.vscode-jest-runner",
+                "vscjava.vscode-lombok", // Útil si usas decoradores complejos
+                "vivaxy.vscode-conventional-commits",
+                "ckeditor.ckeditor-inspector",
+                "postman.postman-for-vscode",
+                "prisma.prisma" // Indispensable para tu DB
+            ],
+            "settings": {
+                "terminal.integrated.shell.linux": "/bin/bash",
+                "editor.formatOnSave": true,
+                "editor.defaultFormatter": "esbenp.prettier-vscode",
+                "files.exclude": {
+                    "**/node_modules": true,
+                    "**/dist": true
+                }
+            }
+        }
+    },
+    "forwardPorts": [
+        3000, // Next.js
+        3001, // NestJS API
+        5432 // PostgreSQL
+    ],
+    "portsAttributes": {
+        "3000": {
+            "label": "Frontend (Next.js)"
+        },
+        "3001": {
+            "label": "Backend (NestJS)"
+        },
+        "5432": {
+            "label": "Database (Postgres)"
+        }
+    },
+    "remoteUser": "vscode"
+}

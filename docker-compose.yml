@@ -1,0 +1,31 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    container_name: prescription-app-dev
+    volumes:
+      - .:/workspaces/prescription-app:cached
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /workspaces
+    command: sleep infinity
+    environment:
+      - TZ=UTC
+    depends_on:
+      - db
+
+  db:
+    image: postgres:16-alpine
+    container_name: prescription-db-pgsql
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: prescription_db
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: dev_password
+    volumes:
+      - pgdata-prescription:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  pgdata-prescription:
