@@ -2,14 +2,21 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  forwardRef,
+  Inject,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { AuthService } from '../auth/auth.service';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService, // Este ya lo tiene
+    @Inject(forwardRef(() => AuthService))
+    private readonly authService: AuthService,
+  ) {}
 
   async create(dto: CreateUserDto) {
     const exists = await this.prisma.user.findUnique({
@@ -56,6 +63,11 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id },
       data: { deletedAt: new Date() },
+    });
+  }
+  async findOneByEmail(email: string) {
+    return this.prisma.user.findFirst({
+      where: { email, deletedAt: null }, // Usando el filtro de soft delete que vi en tus tablas
     });
   }
 }

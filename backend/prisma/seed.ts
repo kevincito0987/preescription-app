@@ -9,14 +9,12 @@ async function main() {
   const adapter = new PrismaPg(pool);
   const prisma = new PrismaClient({ adapter });
 
-  console.log('🌱 Iniciando seeding con Driver Adapter...');
+  console.log('✨ Base de datos vacía. Iniciando seeding...');
 
-  // 1. Crear Admin (según imagen image_83a6e7.png)
+  // --- 2. Crear Usuarios (Usa create en lugar de upsert ya que limpiamos antes) ---
   const adminPassword = await bcrypt.hash('admin123', 10);
-  await prisma.user.upsert({
-    where: { email: 'admin@test.com' },
-    update: {},
-    create: {
+  await prisma.user.create({
+    data: {
       email: 'admin@test.com',
       password: adminPassword,
       fullName: 'System Admin',
@@ -24,52 +22,37 @@ async function main() {
     },
   });
 
-  // 2. Crear Médico (según imagen image_83a6e7.png)
-  const drPassword = await bcrypt.hash('dr123', 10);
-  const doctorUser = await prisma.user.upsert({
-    where: { email: 'dr@test.com' },
-    update: {},
-    create: {
+  const drPassword = await bcrypt.hash('dr1238', 10);
+  const doctorUser = await prisma.user.create({
+    data: {
       email: 'dr@test.com',
       password: drPassword,
       fullName: 'Dr. Gregory House',
       role: 'doctor',
-      doctor: {
-        create: { specialty: 'Diagnóstico Médico' },
-      },
+      doctor: { create: { specialty: 'Diagnóstico Médico' } },
     },
     include: { doctor: true },
   });
 
-  // 3. Crear Paciente (según imagen image_83a6e7.png)
   const patientPassword = await bcrypt.hash('patient123', 10);
-  const patientUser = await prisma.user.upsert({
-    where: { email: 'patient@test.com' },
-    update: {},
-    create: {
+  const patientUser = await prisma.user.create({
+    data: {
       email: 'patient@test.com',
       password: patientPassword,
       fullName: 'John Doe',
       role: 'patient',
-      patient: {
-        create: { birthDate: new Date('1990-01-01') },
-      },
+      patient: { create: { birthDate: new Date('1990-01-01') } },
     },
     include: { patient: true },
   });
 
-  console.log('✅ Usuarios base creados.');
-
-  // 4. Crear 5-10 Prescripciones (según imagen image_83a39c.png)
-  console.log('💊 Generando prescripciones de ejemplo...');
-
-  const statusOptions: ('pending' | 'consumed')[] = ['pending', 'consumed'];
-
+  // --- 3. Generar Prescripciones ---
+  const statusOptions = ['pending', 'consumed'] as const;
   for (let i = 1; i <= 8; i++) {
     await prisma.prescription.create({
       data: {
         medicalCode: `RX-${1000 + i}`,
-        status: statusOptions[i % 2], // Alterna entre pending y consumed
+        status: statusOptions[i % 2],
         notes: `Prescripción de prueba número ${i}`,
         patientId: patientUser.patient!.id,
         authorId: doctorUser.doctor!.id,
@@ -87,10 +70,11 @@ async function main() {
     });
   }
 
-  console.log('🚀 Seeding completado con éxito.');
+  console.log('🚀 Todo listo. Base de datos reseteada y poblada.');
+  await pool.end();
 }
 
 main().catch((e) => {
-  console.error(e);
+  console.error('❌ Error en el seeding:', e);
   process.exit(1);
 });
