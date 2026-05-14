@@ -1,13 +1,77 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "./generated"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String
+  role      Role      @default(patient)
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+  fullName  String
+  updatedAt DateTime  @updatedAt
+  doctor    Doctor?
+  patient   Patient?
+}
+
+model Doctor {
+  id            String         @id @default(cuid())
+  userId        String         @unique
+  specialty     String?
+  user          User           @relation(fields: [userId], references: [id])
+  prescriptions Prescription[] @relation("AuthoredBy")
+}
+
+model Patient {
+  id            String         @id @default(cuid())
+  userId        String         @unique
+  birthDate     DateTime?
+  user          User           @relation(fields: [userId], references: [id])
+  prescriptions Prescription[]
+}
+
+model Prescription {
+  id          String             @id @default(cuid())
+  status      PrescriptionStatus @default(pending)
+  notes       String?
+  createdAt   DateTime           @default(now())
+  consumedAt  DateTime?
+  patientId   String
+  authorId    String
+  medicalCode String             @unique
+  updatedAt   DateTime           @updatedAt
+  author      Doctor             @relation("AuthoredBy", fields: [authorId], references: [id])
+  patient     Patient            @relation(fields: [patientId], references: [id])
+  items       PrescriptionItem[]
+
+  @@index([status, createdAt])
+  @@index([patientId])
+  @@index([authorId])
+}
+
+model PrescriptionItem {
+  id             String       @id @default(cuid())
+  prescriptionId String
+  name           String
+  dosage         String?
+  quantity       Int?
+  instructions   String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id])
+}
+
+enum Role {
+  admin
+  doctor
+  patient
+}
+
+enum PrescriptionStatus {
+  pending
+  consumed
 }
