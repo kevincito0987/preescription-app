@@ -1,11 +1,18 @@
-import { IsOptional, IsString, IsEnum } from 'class-validator';
+import { IsOptional, IsString, IsEnum, IsIn } from 'class-validator';
+import { Role } from '@prisma/client'; // Importamos el Enum directamente de Prisma
 
 export class UpdateUserAdminDto {
   @IsOptional()
-  @IsString()
-  role?: string; // El admin puede cambiar roles
+  @IsEnum(Role, {
+    message:
+      'El rol debe ser uno de los siguientes valores: ADMIN, DOCTOR, PATIENT',
+  })
+  role?: Role; // Ahora solo acepta valores válidos del Enum
 
   @IsOptional()
   @IsString()
-  status?: string; // Por ejemplo, para activar/desactivar cuenta
+  @IsIn(['ACTIVE', 'INACTIVE', 'SUSPENDED'], {
+    message: 'El estado debe ser ACTIVE, INACTIVE o SUSPENDED',
+  })
+  status?: string;
 }

@@ -5,11 +5,12 @@ import {
   Body,
   Param,
   Delete,
-  Patch, // <--- Faltaba este
+  Patch,
   UseGuards,
-  Req, // <--- Faltaba este
-  ForbiddenException, // <--- Faltaba este
-  UnauthorizedException, // <--- Faltaba este
+  Req,
+  ForbiddenException,
+  UnauthorizedException,
+  Query,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -24,26 +25,28 @@ import { UpdateUserAdminDto } from './dto/update-user-admin.dto';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Post()
-  @Roles('admin')
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
+  // RUTA: Obtener mi propio perfil
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async getMe(@Req() req: any) {
+    // El ID viene del token decodificado por el JwtStrategy
+    return this.usersService.findOne(req.user.id);
   }
 
   @Get()
   @Roles('admin')
-  findAll() {
-    return this.usersService.findAll();
+  findAll(@Query() query: { page?: number; limit?: number; role?: string }) {
+    return this.usersService.findAll(query);
   }
 
   @Get(':id')
-  @Roles('admin', 'doctor', 'patient') // Permitimos que todos vean perfiles, la lógica de quién ve a quién va en el servicio si quieres
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(id);
+  @Roles('admin', 'doctor', 'patient')
+  findOne(@Param('id') id: string, @Req() req: any) {
+    // Pasamos el usuario completo que viene del token
+    return this.usersService.findOneSecure(id, req.user);
   }
 
   // RUTA 1: Para cualquier usuario logueado (Me)
-  // src/users/users.controller.ts
   @Patch('me')
   @UseGuards(JwtAuthGuard) // Asegúrate de que esto esté aquí o arriba de la clase
   async updateMe(@Req() req: any, @Body() updateUserDto: UpdateUserDto) {
@@ -57,6 +60,12 @@ export class UsersController {
     }
 
     return this.usersService.updateMe(req.user.id, updateUserDto);
+  }
+
+  @Post()
+  @Roles('admin')
+  create(@Body() createUserDto: CreateUserDto) {
+    return this.usersService.create(createUserDto);
   }
 
   // RUTA 2: Para que el Admin edite a otros
