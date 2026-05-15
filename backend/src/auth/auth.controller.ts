@@ -18,6 +18,7 @@ export class AuthController {
 
   @Post('register')
   register(@Body() registerDto: RegisterDto) {
+    // Ahora registerDto heredará fullName, email y password correctamente
     return this.authService.register(registerDto);
   }
 

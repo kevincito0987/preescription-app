@@ -19,13 +19,16 @@ export class RolesGuard implements CanActivate {
     if (!requiredRoles) return true;
 
     const { user } = context.switchToHttp().getRequest();
+
     const hasRole = requiredRoles.some((role) => user.role?.includes(role));
 
     if (!hasRole) {
-      // Mensaje mucho más profesional
-      throw new ForbiddenException(
-        `Acceso restringido: Los usuarios con rol '${user.role}' no tienen permiso para acceder a este recurso.`,
-      );
+      throw new ForbiddenException({
+        statusCode: 403,
+        message: 'Permisos insuficientes.',
+        error: 'Forbidden',
+        details: `Esta acción requiere uno de los siguientes roles: [${requiredRoles.join(', ')}]. Tu rol actual es: ${user.role}`,
+      });
     }
 
     return hasRole;

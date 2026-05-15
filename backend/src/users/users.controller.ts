@@ -13,7 +13,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { CreateUserDto } from './dto/create-user.dto';
+import { CreateUserBaseDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -46,6 +46,22 @@ export class UsersController {
     return this.usersService.findOneSecure(id, req.user);
   }
 
+  @Post('patient')
+  createPatient(@Body() dto: CreateUserBaseDto) {
+    return this.usersService.createWithRole(dto, 'patient');
+  }
+
+  @Post('doctor')
+  @Roles('admin') // Solo el admin puede pasar el RolesGuard aquí
+  createDoctor(@Body() dto: CreateUserBaseDto) {
+    return this.usersService.createWithRole(dto, 'doctor');
+  }
+
+  @Post('admin')
+  createAdmin(@Body() dto: CreateUserBaseDto) {
+    return this.usersService.createWithRole(dto, 'admin');
+  }
+
   // RUTA 1: Para cualquier usuario logueado (Me)
   @Patch('me')
   @UseGuards(JwtAuthGuard) // Asegúrate de que esto esté aquí o arriba de la clase
@@ -60,12 +76,6 @@ export class UsersController {
     }
 
     return this.usersService.updateMe(req.user.id, updateUserDto);
-  }
-
-  @Post()
-  @Roles('admin')
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
   }
 
   // RUTA 2: Para que el Admin edite a otros

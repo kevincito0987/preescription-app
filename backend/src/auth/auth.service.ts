@@ -10,6 +10,8 @@ import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { RegisterDto } from './dto/register.dto';
+import { Role } from '@prisma/client'; // Importante: Importamos el Enum real de Prisma
 
 @Injectable()
 export class AuthService {
@@ -20,12 +22,13 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
-  async register(registerDto: any) {
-    return this.usersService.create(registerDto);
+  async register(registerDto: RegisterDto) {
+    // Forzamos el tipo usando el Enum de Prisma para evitar el error TS2322
+    // Esto asegura que 'patient' sea reconocido como un Role válido
+    return this.usersService.createWithRole(registerDto, Role.patient);
   }
 
   async login(loginDto: LoginDto) {
-    // Con 'private readonly', this.usersService ya no es undefined
     const user = await this.usersService.findOneByEmail(loginDto.email);
 
     if (!user) {
@@ -44,13 +47,12 @@ export class AuthService {
     const payload = {
       sub: user.id,
       email: user.email,
-      role: String(user.role), // Convertimos el Enum a string para evitar el error de la imagen
+      role: String(user.role),
     };
 
-    // ... dentro de login o refresh
     return {
       accessToken: this.jwtService.sign(payload, {
-        expiresIn: '1h', // Ponlo como string directo para probar
+        expiresIn: '1h',
       }),
       refreshToken: this.jwtService.sign(payload, {
         expiresIn: '7d',
@@ -60,7 +62,6 @@ export class AuthService {
 
   async refresh(refreshTokenDto: RefreshTokenDto) {
     try {
-      // 1. Validamos el token con una aserción de tipo para el secreto
       const payload = this.jwtService.verify(refreshTokenDto.refreshToken, {
         secret: this.configService.get<string>('JWT_SECRET') as string,
       });
@@ -71,15 +72,12 @@ export class AuthService {
         throw new UnauthorizedException('Usuario no encontrado');
       }
 
-      // 2. Preparamos el payload asegurando que el role sea un string plano
       const newPayload = {
         sub: user.id,
         email: user.email,
         role: String(user.role),
       };
 
-      // 3. Firmamos los nuevos tokens usando 'as any' para los tiempos de expiración
-      // Esto evita el error de "No overload matches this call"
       return {
         accessToken: this.jwtService.sign(newPayload, {
           expiresIn: (this.configService.get<string>('JWT_ACCESS_TTL') ||
@@ -91,7 +89,6 @@ export class AuthService {
         }),
       };
     } catch (error) {
-      // Si entra aquí, es porque verify falló o el usuario no existe
       throw new UnauthorizedException('Refresh token inválido o expirado');
     }
   }

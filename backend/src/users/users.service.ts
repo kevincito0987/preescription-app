@@ -7,15 +7,14 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateUserDto } from './dto/create-user.dto';
+import { CreateUserBaseDto } from './dto/create-user.dto';
 import { AuthService } from '../auth/auth.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
-import { Role } from '@prisma/client';
+import { Role } from '@prisma/client'; // Importamos el Enum generado por Prisma
 
 @Injectable()
 export class UsersService {
-  // Definimos un objeto select reutilizable para no repetir código y ocultar la contraseña
   private readonly userSelect = {
     id: true,
     email: true,
@@ -32,23 +31,6 @@ export class UsersService {
     private readonly authService: AuthService,
   ) {}
 
-  async create(dto: CreateUserDto) {
-    const exists = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-    if (exists) throw new ConflictException('El email ya existe');
-
-    const hashedPassword = await bcrypt.hash(dto.password, 10);
-
-    return this.prisma.user.create({
-      data: {
-        ...dto,
-        password: hashedPassword,
-      },
-      select: this.userSelect, // Oculta contraseña
-    });
-  }
-
   async findAll(query: { page?: number; limit?: number; role?: string }) {
     const { page = 1, limit = 10, role } = query;
     const skip = (Number(page) - 1) * Number(limit);
@@ -57,15 +39,15 @@ export class UsersService {
       this.prisma.user.findMany({
         where: {
           deletedAt: null,
-          role: role ? (role as any) : undefined,
+          role: role ? (role as Role) : undefined, // Casteo a Role de Prisma
         },
         skip,
         take: Number(limit),
-        orderBy: { createdAt: 'desc' }, // Requerimiento: Ordenamiento desc
+        orderBy: { createdAt: 'desc' },
         select: this.userSelect,
       }),
       this.prisma.user.count({
-        where: { deletedAt: null, role: role ? (role as any) : undefined },
+        where: { deletedAt: null, role: role ? (role as Role) : undefined },
       }),
     ]);
 
@@ -82,7 +64,7 @@ export class UsersService {
   async findOne(id: string) {
     const user = await this.prisma.user.findFirst({
       where: { id, deletedAt: null },
-      select: this.userSelect, // Oculta contraseña
+      select: this.userSelect,
     });
     if (!user) throw new NotFoundException('Usuario no encontrado');
     return user;
@@ -91,13 +73,11 @@ export class UsersService {
   async findOneSecure(idToFind: string, currentUser: any) {
     const user = await this.prisma.user.findUnique({
       where: { id: idToFind },
-      // Aquí NO usamos select inicialmente para poder validar el rol del usuario encontrado
     });
 
     if (!user || user.deletedAt)
       throw new NotFoundException('Usuario no encontrado');
 
-    // REGLAS DE ACCESO
     let hasAccess = false;
     if (currentUser.id === idToFind) hasAccess = true;
     if (currentUser.role === 'admin') hasAccess = true;
@@ -108,7 +88,6 @@ export class UsersService {
       throw new ForbiddenException('No tienes permiso para ver este perfil');
     }
 
-    // Eliminamos la contraseña manualmente antes de retornar
     const { password, ...userWithoutPassword } = user;
     return userWithoutPassword;
   }
@@ -117,6 +96,27 @@ export class UsersService {
     return this.prisma.user.findFirst({
       where: { email, deletedAt: null },
     });
+  }
+
+  // CORRECCIÓN: Tipamos el argumento 'role' como 'Role' (de Prisma) o usamos casteo
+  async createWithRole(dto: CreateUserBaseDto, role: string) {
+    const userExists = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+    if (userExists) throw new ConflictException('El correo ya existe');
+
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    const user = await this.prisma.user.create({
+      data: {
+        ...dto,
+        password: hashedPassword,
+        role: role as Role, // <--- EXPLICACIÓN: Usamos 'as Role' para que Prisma acepte el string
+      },
+    });
+
+    const { password, ...result } = user;
+    return result;
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
@@ -134,7 +134,7 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id },
       data: data,
-      select: this.userSelect, // Oculta contraseña
+      select: this.userSelect,
     });
   }
 
@@ -148,7 +148,7 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id },
       data: dataToUpdate,
-      select: this.userSelect, // Oculta contraseña
+      select: this.userSelect,
     });
   }
 
@@ -158,7 +158,7 @@ export class UsersService {
 
     return await this.prisma.user.update({
       where: { id },
-      data: { deletedAt: new Date() }, // Requerimiento: Soft Delete
+      data: { deletedAt: new Date() },
       select: this.userSelect,
     });
   }
