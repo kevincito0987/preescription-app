@@ -101,4 +101,24 @@ export class PrescriptionItemsService {
       data: dto,
     });
   }
+
+  async remove(identifier: string) {
+    // 1. Buscamos el ítem por ID o Nombre para saber qué borrar
+    const item = await this.prisma.prescriptionItem.findFirst({
+      where: {
+        OR: [{ id: identifier }, { name: identifier }],
+      },
+    });
+
+    if (!item) {
+      throw new NotFoundException(
+        `No se pudo eliminar: No existe un medicamento con el identificador '${identifier}'`,
+      );
+    }
+
+    // 2. Eliminación física por el ID único
+    return this.prisma.prescriptionItem.delete({
+      where: { id: item.id },
+    });
+  }
 }

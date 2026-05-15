@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -48,5 +49,11 @@ export class PrescriptionItemsController {
   ) {
     // El servicio se encarga de buscar si es ID o Nombre
     return this.itemsService.update(identifier, updateDto);
+  }
+
+  @Delete(':identifier')
+  @Roles('admin') // <--- Solo el admin puede borrar
+  async remove(@Param('identifier') identifier: string) {
+    return this.itemsService.remove(identifier);
   }
 }
