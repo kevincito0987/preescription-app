@@ -1,9 +1,18 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { PrescriptionItemsService } from './prescription-items.service';
 import { GetPrescriptionItemFilterDto } from './dto/get-prescription-item-filter.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CreatePrescriptionItemDto } from './dto/create-prescription-item.dto';
 
 @Controller('prescription-items')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -21,5 +30,11 @@ export class PrescriptionItemsController {
   @Roles('admin', 'doctor')
   findOne(@Param('id') id: string) {
     return this.itemsService.findOne(id);
+  }
+
+  @Post()
+  @Roles('admin') // <--- SOLO EL ADMIN PUEDE CREAR ITEMS SEGÚN TU REQUERIMIENTO
+  async create(@Body() createDto: CreatePrescriptionItemDto) {
+    return this.itemsService.create(createDto);
   }
 }

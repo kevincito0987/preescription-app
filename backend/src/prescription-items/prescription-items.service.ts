@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GetPrescriptionItemFilterDto } from './dto/get-prescription-item-filter.dto';
 import { Prisma } from '@prisma/client';
+import { CreatePrescriptionItemDto } from './dto/create-prescription-item.dto';
 
 @Injectable()
 export class PrescriptionItemsService {
@@ -59,5 +60,26 @@ export class PrescriptionItemsService {
 
     if (!item) throw new NotFoundException('Medicamento no encontrado');
     return item;
+  }
+
+  async create(dto: CreatePrescriptionItemDto) {
+    // 1. Verificar si la prescripción existe
+    const prescriptionExists = await this.prisma.prescription.findUnique({
+      where: { id: dto.prescriptionId },
+    });
+
+    if (!prescriptionExists) {
+      throw new NotFoundException(
+        `La prescripción con ID ${dto.prescriptionId} no existe`,
+      );
+    }
+
+    // 2. Crear el ítem
+    return this.prisma.prescriptionItem.create({
+      data: dto,
+      include: {
+        prescription: true, // Para confirmar la relación en la respuesta
+      },
+    });
   }
 }
