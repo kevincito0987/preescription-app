@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   Query,
@@ -13,6 +14,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CreatePrescriptionItemDto } from './dto/create-prescription-item.dto';
+import { UpdatePrescriptionItemDto } from './dto/update-prescription-item.dto';
 
 @Controller('prescription-items')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -36,5 +38,15 @@ export class PrescriptionItemsController {
   @Roles('admin') // <--- SOLO EL ADMIN PUEDE CREAR ITEMS SEGÚN TU REQUERIMIENTO
   async create(@Body() createDto: CreatePrescriptionItemDto) {
     return this.itemsService.create(createDto);
+  }
+
+  @Patch(':identifier') // Usamos un nombre genérico como 'identifier'
+  @Roles('admin')
+  async update(
+    @Param('identifier') identifier: string,
+    @Body() updateDto: UpdatePrescriptionItemDto,
+  ) {
+    // El servicio se encarga de buscar si es ID o Nombre
+    return this.itemsService.update(identifier, updateDto);
   }
 }

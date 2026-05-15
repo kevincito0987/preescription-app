@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { GetPrescriptionItemFilterDto } from './dto/get-prescription-item-filter.dto';
 import { Prisma } from '@prisma/client';
 import { CreatePrescriptionItemDto } from './dto/create-prescription-item.dto';
+import { UpdatePrescriptionItemDto } from './dto/update-prescription-item.dto';
 
 @Injectable()
 export class PrescriptionItemsService {
@@ -80,6 +81,24 @@ export class PrescriptionItemsService {
       include: {
         prescription: true, // Para confirmar la relación en la respuesta
       },
+    });
+  }
+
+  async update(identifier: string, dto: UpdatePrescriptionItemDto) {
+    // Buscamos por ID o por Nombre exacto
+    const item = await this.prisma.prescriptionItem.findFirst({
+      where: {
+        OR: [{ id: identifier }, { name: identifier }],
+      },
+    });
+
+    if (!item) {
+      throw new NotFoundException(`No se encontró el ítem con: ${identifier}`);
+    }
+
+    return this.prisma.prescriptionItem.update({
+      where: { id: item.id }, // Siempre actualizamos por el ID interno
+      data: dto,
     });
   }
 }
