@@ -16,18 +16,18 @@ export class RolesGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    if (!requiredRoles) {
-      return true;
-    }
+    if (!requiredRoles) return true;
 
     const { user } = context.switchToHttp().getRequest();
+    const hasRole = requiredRoles.some((role) => user.role?.includes(role));
 
-    if (!user || !requiredRoles.includes(user.role)) {
+    if (!hasRole) {
+      // Mensaje mucho más profesional
       throw new ForbiddenException(
-        'No tienes permisos para acceder a esta ruta',
+        `Acceso restringido: Los usuarios con rol '${user.role}' no tienen permiso para acceder a este recurso.`,
       );
     }
 
-    return true;
+    return hasRole;
   }
 }
