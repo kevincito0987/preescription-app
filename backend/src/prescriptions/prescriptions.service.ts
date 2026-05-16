@@ -1,9 +1,14 @@
 // src/prescriptions/prescriptions.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MyPrescriptionResponseDto } from './dto/my-prescription-response.dto';
 import { GetMyPrescriptionsFilterDto } from './dto/get-my-prescriptions-filter.dto';
 import { DoctorPrescriptionResponseDto } from './dto/doctor-prescription-response.dto';
+import { CreatePrescriptionDto } from './dto/create-prescription.dto';
 import { Prisma } from '@prisma/client';
 
 // Argumentos e Inclusión relacional para las consultas de Pacientes
@@ -218,9 +223,42 @@ export class PrescriptionsService {
 
   // 1. GETTER ADMIN: Trae TODAS las prescripciones de la plataforma (Paginado)
   async findAllForAdmin(filters: GetMyPrescriptionsFilterDto): Promise<any> {
-    const { page = 1, limit = 10 } = filters;
+    const {
+      page = 1,
+      limit = 10,
+      doctorName,
+      status,
+      startDate,
+      endDate,
+    } = filters;
     const skip = (Number(page) - 1) * Number(limit);
+
     const whereCondition: Prisma.PrescriptionWhereInput = {};
+
+    // Filtro por nombre de doctor
+    if (doctorName) {
+      whereCondition.author = {
+        user: { fullName: { contains: doctorName, mode: 'insensitive' } },
+      };
+    }
+
+    // 🟢 Filtro por Estado (pending | consumed)
+    if (status) {
+      whereCondition.status = status as any;
+    }
+
+    // 🟢 Filtro por Rango de Fechas (Por día)
+    if (startDate || endDate) {
+      whereCondition.createdAt = {};
+      if (startDate) {
+        // Setea al inicio del día 00:00:00
+        whereCondition.createdAt.gte = new Date(`${startDate}T00:00:00.000Z`);
+      }
+      if (endDate) {
+        // Setea al final del día 23:59:59
+        whereCondition.createdAt.lte = new Date(`${endDate}T23:59:59.999Z`);
+      }
+    }
 
     const [prescriptions, total] = await Promise.all([
       this.prisma.prescription.findMany({
@@ -367,6 +405,127 @@ export class PrescriptionsService {
         specialty: doctorData?.specialty || 'No especificada',
         fullName: doctorData?.user?.fullName || 'Sin nombre',
         email: doctorData?.user?.email || 'Sin email',
+      },
+    };
+  }
+
+  async getAdminMetrics(): Promise<any> {
+    // Ejecutamos consultas paralelas para optimizar tiempos de respuesta
+    const [
+      totalPatients,
+      totalDoctors,
+      totalPrescriptions,
+      pendingPrescriptions,
+      consumedPrescriptions,
+      allPrescriptionsForDates,
+    ] = await Promise.all([
+      this.prisma.patient.count(), // # de pacientes
+      this.prisma.doctor.count(), // # de médicos
+      this.prisma.prescription.count(), // Total recetas
+      this.prisma.prescription.count({ where: { status: 'pending' } }), // por estado
+      this.prisma.prescription.count({ where: { status: 'consumed' } }), // por estado
+      // Traemos las fechas para agruparlas por día en memoria de forma limpia
+      this.prisma.prescription.findMany({
+        select: { createdAt: true },
+      }),
+    ]);
+
+    // Agrupar prescripciones por día (YYYY-MM-DD)
+    const prescriptionsByDay: Record<string, number> = {};
+    allPrescriptionsForDates.forEach((p) => {
+      const day = p.createdAt.toISOString().split('T')[0]; // Extrae solo '2026-05-15'
+      prescriptionsByDay[day] = (prescriptionsByDay[day] || 0) + 1;
+    });
+
+    // Convertimos el mapa en un arreglo ordenado para el frontend
+    const formattedPrescriptionsByDay = Object.entries(prescriptionsByDay)
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => b.date.localeCompare(a.date)); // De más reciente a más antigua
+
+    return {
+      summary: {
+        totalPatients,
+        totalDoctors,
+        totalPrescriptions,
+      },
+      byStatus: {
+        pending: pendingPrescriptions,
+        consumed: consumedPrescriptions,
+      },
+      byDay: formattedPrescriptionsByDay, // prescripciones por día
+    };
+  }
+
+  // 🚀 CREAR PRESCRIPCIÓN (ROL: MÉDICO)
+  async createPrescription(
+    doctorUserId: string,
+    dto: CreatePrescriptionDto,
+  ): Promise<any> {
+    const { patientEmail, notes, items } = dto;
+
+    // 1. Verificar que el autor exista y sea un Médico registrado
+    const doctor = await this.prisma.doctor.findUnique({
+      where: { userId: doctorUserId },
+    });
+
+    if (!doctor) {
+      throw new BadRequestException(
+        'El usuario autenticado no está registrado como Médico en la plataforma.',
+      );
+    }
+
+    // 2. Buscar al paciente por el Email de su cuenta de usuario
+    const patientUser = await this.prisma.user.findUnique({
+      where: { email: patientEmail },
+      include: { patient: true },
+    });
+
+    if (!patientUser || !patientUser.patient) {
+      throw new NotFoundException(
+        `No se encontró ningún paciente registrado con el email: ${patientEmail}`,
+      );
+    }
+
+    // 3. Generar un código médico único (puedes usar la lógica que prefieras, ej: RX- + timestamp o random)
+    const medicalCode = `RX-${Math.floor(1000 + Math.random() * 9000)}-${Date.now().toString().slice(-4)}`;
+
+    // 4. Crear la prescripción con sus ítems de forma atómica en la BD
+    const newPrescription = await this.prisma.prescription.create({
+      data: {
+        medicalCode,
+        status: 'pending', // Inicia por defecto en pendiente
+        notes: notes || '',
+        patientId: patientUser.patient.id,
+        authorId: doctor.id,
+        items: {
+          create: items.map((item) => ({
+            name: item.name,
+            dosage: item.dosis, // 🟢 Corregido: Mapeamos 'dosis' al campo 'dosage' de la BD
+            quantity: item.cantidad ? Number(item.cantidad) : null, // 🟢 Corregido: Convertimos el string a número entero (Int)
+            instructions: item.indicaciones, // Mapeado correctamente
+          })),
+        },
+      },
+      include: {
+        items: true,
+      },
+    });
+
+    // 5. Retornar la respuesta estructurada limpia
+    return {
+      message: 'Prescripción médica creada con éxito',
+      data: {
+        id: String(newPrescription.id),
+        medicalCode: newPrescription.medicalCode,
+        status: newPrescription.status,
+        notes: newPrescription.notes,
+        createdAt: newPrescription.createdAt,
+        items: newPrescription.items,
+        patient: {
+          id: String(patientUser.patient.id),
+          fullName: patientUser.fullName,
+          email: patientUser.email,
+        },
       },
     };
   }

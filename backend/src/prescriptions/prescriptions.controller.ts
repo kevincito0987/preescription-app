@@ -1,10 +1,21 @@
 // src/prescriptions/prescriptions.controller.ts
 // 🟢 CORRECCIÓN: Agregamos Param al import de '@nestjs/common'
-import { Controller, Get, UseGuards, Req, Query, Param } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  UseGuards,
+  Req,
+  Query,
+  Param,
+  Request,
+} from '@nestjs/common';
 import { PrescriptionsService } from './prescriptions.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { GetMyPrescriptionsFilterDto } from './dto/get-my-prescriptions-filter.dto';
+import { CreatePrescriptionDto } from './dto/create-prescription.dto';
 
 @Controller('prescriptions')
 export class PrescriptionsController {
@@ -66,5 +77,27 @@ export class PrescriptionsController {
   @UseGuards(JwtAuthGuard, ThrottlerGuard)
   async getByMedicalCodeForAdmin(@Param('medicalCode') medicalCode: string) {
     return this.prescriptionsService.findByMedicalCodeForAdmin(medicalCode);
+  }
+
+  // 🟢 NUEVO ENDPOINT DE MÉTRICAS PARA EL DASHBOARD DEL ADMIN
+  @Get('admin/metrics')
+  @UseGuards(JwtAuthGuard) // Asegúrate de protegerlo con los guards correspondientes
+  async getMetricsForAdmin() {
+    return this.prescriptionsService.getAdminMetrics();
+  }
+
+  // 🟢 POST: Crear una nueva prescripción (Exclusivo Médicos)
+  @Post()
+  @UseGuards(JwtAuthGuard) // Protegido con JWT para extraer la identidad del médico
+  async create(
+    @Body() createPrescriptionDto: CreatePrescriptionDto,
+    @Request() req,
+  ) {
+    // req.user.id contiene el userId almacenado en el Token JWT del médico
+    const doctorUserId = req.user.id;
+    return this.prescriptionsService.createPrescription(
+      doctorUserId,
+      createPrescriptionDto,
+    );
   }
 }

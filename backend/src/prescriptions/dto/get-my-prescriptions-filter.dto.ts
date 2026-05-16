@@ -1,21 +1,26 @@
-import { IsOptional, IsInt, Min, IsString } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsString, IsDateString, IsEnum } from 'class-validator';
 
 export class GetMyPrescriptionsFilterDto {
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1;
+  page?: number;
 
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  limit?: number = 10;
+  limit?: number;
 
-  // 🟢 AGREGA ESTO: Así el ValidationPipe ya no rebotará con un 400
   @IsOptional()
   @IsString()
   doctorName?: string;
+
+  // 🟢 NUEVOS FILTROS PARA EL ADMIN
+  @IsOptional()
+  @IsString()
+  status?: string; // 'pending' | 'consumed'
+
+  @IsOptional()
+  @IsDateString()
+  startDate?: string; // Fecha inicial (YYYY-MM-DD)
+
+  @IsOptional()
+  @IsDateString()
+  endDate?: string; // Fecha final (YYYY-MM-DD)
 }
