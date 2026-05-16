@@ -4,16 +4,19 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   UseGuards,
   Req,
+  Res,
   Query,
   Param,
   Request,
 } from '@nestjs/common';
-import { PrescriptionsService } from './prescriptions.service';
+import type { Response } from 'express'; // 👈 Nota el "type" aquíimport { PrescriptionsService } from './prescriptions.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ThrottlerGuard } from '@nestjs/throttler';
+import { PrescriptionsService } from './prescriptions.service';
 import { GetMyPrescriptionsFilterDto } from './dto/get-my-prescriptions-filter.dto';
 import { CreatePrescriptionDto } from './dto/create-prescription.dto';
 
@@ -99,5 +102,38 @@ export class PrescriptionsController {
       doctorUserId,
       createPrescriptionDto,
     );
+  }
+
+  // 🔵 PATCH: Cambiar estado a consumida (Exclusivo Pacientes)
+  @Patch(':id/consume')
+  @UseGuards(JwtAuthGuard) // Protegemos con token JWT
+  async consume(
+    @Param('id') id: string, // Captura la ID de la receta por parámetro de ruta
+    @Request() req,
+  ) {
+    // req.user.id extrae el userId del token del paciente autenticado
+    const patientUserId = req.user.id;
+    return this.prescriptionsService.consumePrescription(id, patientUserId);
+  }
+  // 🔵 GET: Descargar reporte en formato PDF
+  @Get(':id/pdf')
+  @UseGuards(JwtAuthGuard)
+  async downloadPdf(
+    @Param('id') id: string,
+    @Res() res: Response, // Mantenemos el @Res para tomar el control
+  ) {
+    // 🟢 CORREGIDO: Le quitamos el ', res' al método. Solo le pasamos el 'id'
+    const pdfBuffer =
+      await this.prescriptionsService.generatePrescriptionPdf(id);
+
+    // Configuramos los headers para la descarga del archivo binario
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename=prescripcion-${id}.pdf`,
+      'Content-Length': pdfBuffer.length,
+    });
+
+    // Enviamos el buffer final al cliente
+    res.end(pdfBuffer);
   }
 }

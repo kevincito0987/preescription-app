@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MyPrescriptionResponseDto } from './dto/my-prescription-response.dto';
@@ -10,7 +11,7 @@ import { GetMyPrescriptionsFilterDto } from './dto/get-my-prescriptions-filter.d
 import { DoctorPrescriptionResponseDto } from './dto/doctor-prescription-response.dto';
 import { CreatePrescriptionDto } from './dto/create-prescription.dto';
 import { Prisma } from '@prisma/client';
-
+import * as puppeteer from 'puppeteer'; // 🟢 Importamos Puppeteer directo
 // Argumentos e Inclusión relacional para las consultas de Pacientes
 const prescriptionWithDoctorArgs =
   Prisma.validator<Prisma.PrescriptionFindManyArgs>()({
@@ -528,5 +529,224 @@ export class PrescriptionsService {
         },
       },
     };
+  }
+  // 🟢 ACTUALIZAR ESTADO A CONSUMIDA (ROL: PACIENTE)
+  async consumePrescription(
+    prescriptionId: string,
+    patientUserId: string,
+  ): Promise<any> {
+    // 1. Verificar que el usuario que ejecuta la acción sea un Paciente registrado
+    const patient = await this.prisma.patient.findUnique({
+      where: { userId: patientUserId },
+    });
+
+    if (!patient) {
+      throw new ForbiddenException(
+        'Acceso denegado. Este endpoint es exclusivo para uso de Pacientes.',
+      );
+    }
+
+    // 2. Buscar la prescripción existente
+    const prescription = await this.prisma.prescription.findUnique({
+      where: { id: prescriptionId },
+    });
+
+    if (!prescription) {
+      throw new NotFoundException(
+        `No se encontró ninguna prescripción médica con el ID: ${prescriptionId}`,
+      );
+    }
+
+    // 3. Regla de seguridad: El paciente solo puede modificar SUS propias prescripciones
+    if (prescription.patientId !== patient.id) {
+      throw new ForbiddenException(
+        'No tienes permisos para modificar el estado de esta prescripción médica.',
+      );
+    }
+
+    // 4. Regla de negocio: Si ya está consumida, no es necesario procesarla de nuevo
+    if (prescription.status === 'consumed') {
+      throw new BadRequestException(
+        'Esta prescripción ya ha sido marcada como consumida anteriormente.',
+      );
+    }
+
+    // 5. Actualizar el estado y estampar la fecha de consumo en la BD
+    const updatedPrescription = await this.prisma.prescription.update({
+      where: { id: prescriptionId },
+      data: {
+        status: 'consumed', // Cambio de estado reglamentario
+        consumedAt: new Date(), // Seteamos la fecha actual en el campo de tu DB
+      },
+    });
+
+    return {
+      message: 'Prescripción médica marcada como consumida con éxito.',
+      data: {
+        id: updatedPrescription.id,
+        medicalCode: updatedPrescription.medicalCode,
+        status: updatedPrescription.status,
+        consumedAt: updatedPrescription.consumedAt,
+      },
+    };
+  }
+
+  async generatePrescriptionPdf(prescriptionId: string): Promise<Buffer> {
+    // 1. Buscar la receta con todas sus relaciones (con el 'as any' para evitar líos de tipos)
+    const prescription = await this.prisma.prescription.findUnique({
+      where: { id: prescriptionId },
+      include: {
+        items: true,
+        patient: { include: { user: true } },
+        author: { include: { user: true } },
+      },
+    });
+
+    if (!prescription) {
+      throw new NotFoundException(
+        `No se encontró la prescripción médica con ID: ${prescriptionId}`,
+      );
+    }
+
+    const data: any = prescription;
+
+    // 2. Formatear fechas
+    const createdAtFormated = new Date(data.createdAt).toLocaleDateString(
+      'es-CO',
+      {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      },
+    );
+
+    const consumedAtFormated = data.consumedAt
+      ? new Date(data.consumedAt).toLocaleDateString('es-CO', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : 'N/A';
+
+    // 3. Generar las filas de la tabla de medicamentos
+    const tableRows = data.items
+      .map(
+        (item) => `
+        <tr>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #2d3748;">${item.name}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #4a5568;">${item.dosage || 'No especificada'}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #4a5568;">${item.quantity || 1}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #4a5568; font-size: 13px;">${item.instructions}</td>
+        </tr>
+      `,
+      )
+      .join('');
+
+    // 4. Plantilla HTML (Tu diseño clínico limpio)
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0; padding: 40px; color: #333; line-height: 1.5; }
+          .header { display: flex; justify-content: space-between; border-bottom: 2px solid #3182ce; padding-bottom: 20px; margin-bottom: 30px; }
+          .logo-area { font-size: 24px; font-weight: bold; color: #2b6cb0; text-transform: uppercase; letter-spacing: 1px; }
+          .doc-info { text-align: right; font-size: 14px; color: #4a5568; }
+          .title { text-align: center; font-size: 22px; color: #2d3748; margin-bottom: 30px; text-transform: uppercase; letter-spacing: 0.5px; }
+          .meta-grid { display: table; width: 100%; margin-bottom: 30px; border-collapse: collapse; }
+          .meta-col { display: table-cell; width: 50%; vertical-align: top; background: #f7fafc; padding: 15px; border: 1px solid #e2e8f0; border-radius: 4px; }
+          .meta-title { font-size: 12px; color: #718096; text-transform: uppercase; font-weight: bold; margin-bottom: 5px; }
+          .meta-value { font-size: 14px; color: #2d3748; margin-bottom: 5px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th { background-color: #ebf8ff; color: #2b6cb0; text-transform: uppercase; font-size: 12px; padding: 12px 10px; text-align: left; border-bottom: 2px solid #bee3f8; }
+          .footer { margin-top: 60px; text-align: center; font-size: 12px; color: #a0aec0; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+          .badge { display: inline-block; padding: 3px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; text-transform: uppercase; }
+          .pending { background-color: #feebc8; color: #c05621; }
+          .consumed { background-color: #c6f6d5; color: #22543d; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="logo-area">➕ Sistema Médico</div>
+          <div class="doc-info">
+            <strong>Dr. ${data.author.user.fullName}</strong><br>
+            Especialidad: ${data.author.specialty || 'Médico General'}<br>
+            Contacto: ${data.author.user.email}
+          </div>
+        </div>
+
+        <div class="title">Prescripción Médica Oficial</div>
+
+        <div class="meta-grid">
+          <div class="meta-col" style="border-right: none;">
+            <div class="meta-title">Datos del Paciente</div>
+            <div class="meta-value"><strong>Nombre:</strong> ${data.patient.user.fullName}</div>
+            <div class="meta-value"><strong>Email:</strong> ${data.patient.user.email}</div>
+          </div>
+          <div class="meta-col">
+            <div class="meta-title">Detalles de la Receta</div>
+            <div class="meta-value"><strong>Código:</strong> ${data.medicalCode}</div>
+            <div class="meta-value"><strong>Fecha Emisión:</strong> ${createdAtFormated}</div>
+            <div class="meta-value">
+              <strong>Estado:</strong> 
+              <span class="badge ${data.status}">${data.status === 'pending' ? 'Pendiente' : 'Consumida'}</span>
+            </div>
+            ${data.status === 'consumed' ? `<div class="meta-value"><strong>Consumido el:</strong> ${consumedAtFormated}</div>` : ''}
+          </div>
+        </div>
+
+        ${data.notes ? `<div style="background: #fffaf0; border-left: 4px solid #dd6b20; padding: 15px; margin-bottom: 30px; font-size: 14px; color: #744210;"><strong>Notas Médicas:</strong> ${data.notes}</div>` : ''}
+
+        <div class="meta-title" style="margin-bottom: 10px;">Medicamentos Recetados</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 25%;">Medicamento</th>
+              <th style="width: 15%;">Dosificación</th>
+              <th style="width: 10%; text-align: center;">Cant.</th>
+              <th style="width: 50%;">Indicaciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          Documento generado de forma digital por el Sistema de Prescripciones Médicas.<br>
+          Código de verificación único: ${data.id}
+        </div>
+      </body>
+      </html>
+    `;
+
+    // 5. 🟢 LANZAMIENTO CONFIGURADO PARA ENTORNO LINUX/DEVCONTAINER
+    const browser = await puppeteer.launch({
+      headless: true,
+      // 🚀 LE DECIMOS A PUPPETEER QUE USE EL CHROME QUE ACABAMOS DE INSTALAR EN EL CONTENEDOR
+      executablePath: '/usr/bin/google-chrome-stable',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage', // Añadimos esto para evitar problemas de memoria en contenedores
+      ],
+    });
+
+    const page = await browser.newPage();
+
+    await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
+
+    const pdfUint8Array = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '20px', bottom: '20px', left: '20px', right: '20px' },
+    });
+
+    await browser.close();
+
+    return Buffer.from(pdfUint8Array);
   }
 }
